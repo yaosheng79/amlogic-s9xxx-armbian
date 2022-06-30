@@ -1,6 +1,6 @@
 # Armbian Software Center
 
-According to the user's demand feedback in the [Issue](https://github.com/ophub/amlogic-s9xxx-armbian/issues), gradually integrate commonly used [software](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) to achieve one-click installation/update/uninstallation and other shortcut operations. Including `docker images`, `desktop software`, `application services`, etc.
+According to the user's demand feedback in the [Issue](https://github.com/ophub/amlogic-s9xxx-armbian/issues), gradually integrate commonly used [software](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) to achieve one-click install/update/uninstall and other shortcut operations. Including `docker images`, `desktop software`, `application services`, etc.
 
 ## Software Center Instructions
 
@@ -14,20 +14,27 @@ A list of currently integrated software quick installation/management will be di
 
 ```yaml
 root@armbian:~# armbian-software
-[ STEPS ] Start selecting software [ Current system: bullseye ]...
+[ STEPS ] Start selecting software [ Current system: debian:bullseye ]...
 -----------------------------------------------------------------------------------
 ID    NAME                                          STATE           MANAGE
 -----------------------------------------------------------------------------------
-101   docker                                        installed       update/remove
-102   portainer(for-docker)                         installed       update/remove
-103   transmission(for-docker)                      installed       update/remove
-104   qbittorrent(for-docker)                       installed       update/remove
-201   desktop                                       not-installed   install
-202   vlc-media-player(for-desktop)                 not-installed   install
-203   firefox(for-desktop)                          not-installed   install
-301   frps                                          not-installed   install
-302   frpc                                          not-installed   install
-303   plex-media-server                             installed       update/remove
+101   Docker                                        installed       update/remove
+102   Portainer                                     installed       update/remove
+103   Yacht                                         installed       update/remove
+104   Transmission                                  not-installed   install
+105   qBittorrent                                   not-installed   install
+106   NextCloud                                     not-installed   install
+107   Jellyfin                                      installed       update/remove
+108   HomeAssistant                                 installed       update/remove
+109   Kodbox                                        installed       update/remove
+201   Desktop                                       installed       update/remove
+202   VLC-Media-Player                              installed       update/remove
+203   Firefox                                       installed       update/remove
+301   Frps                                          not-installed   install
+302   Frpc                                          not-installed   install
+303   Plex-Media-Server                             not-installed   install
+304   Emby-Server                                   not-installed   install
+305   OpenMediaVault(OMV-6)                         not-installed   install
 -----------------------------------------------------------------------------------
 [ OPTIONS ] Please Input Software ID:
 ```
@@ -37,7 +44,7 @@ ID    NAME                                          STATE           MANAGE
 
 ## Software Center Development Instructions
 
-Software Center scripts/commands are centrally stored in the [/usr/share/ophub/armbian-software](../common-files/rootfs/usr/share/ophub/armbian-software) directory. The file starting with a number is the `one-click installation script` of the corresponding software, and the file [software-command.sh](../common-files/rootfs/usr/share/ophub/armbian-software/software-command.sh) is the `unified command file` for installing/updating/deleting operations using commands. [software-list.conf](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) is the software list configuration file, described as follows:
+Software Center scripts/commands are centrally stored in the [/usr/share/ophub/armbian-software](../common-files/rootfs/usr/share/ophub/armbian-software) directory, use the `armbian-software -u` command to synchronously download this directory to the local and update the local software center list. The file starting with a number is the `one-click installation script` of the corresponding software, and the file [software-command.sh](../common-files/rootfs/usr/share/ophub/armbian-software/software-command.sh) is the `unified command file` for installing/updating/deleting operations using commands. [software-list.conf](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) is the software list configuration file, described as follows:
 
 ```yaml
 # software-list.conf description
@@ -78,20 +85,27 @@ armbian-software
 
 ```yaml
 root@armbian:~# armbian-software
-[ STEPS ] Start selecting software [ Current system: bullseye ]...
+[ STEPS ] Start selecting software [ Current system: debian:bullseye ]...
 -----------------------------------------------------------------------------------
 ID    NAME                                          STATE           MANAGE
 -----------------------------------------------------------------------------------
-101   docker                                        installed       update/remove
-102   portainer(for-docker)                         installed       update/remove
-103   transmission(for-docker)                      installed       update/remove
-104   qbittorrent(for-docker)                       installed       update/remove
-201   desktop                                       not-installed   install
-202   vlc-media-player(for-desktop)                 not-installed   install
-203   firefox(for-desktop)                          not-installed   install
-301   frps                                          not-installed   install
-302   frpc                                          not-installed   install
-303   plex-media-server                             installed       update/remove
+101   Docker                                        installed       update/remove
+102   Portainer                                     installed       update/remove
+103   Yacht                                         installed       update/remove
+104   Transmission                                  not-installed   install
+105   qBittorrent                                   not-installed   install
+106   NextCloud                                     not-installed   install
+107   Jellyfin                                      installed       update/remove
+108   HomeAssistant                                 installed       update/remove
+109   Kodbox                                        installed       update/remove
+201   Desktop                                       installed       update/remove
+202   VLC-Media-Player                              installed       update/remove
+203   Firefox                                       installed       update/remove
+301   Frps                                          not-installed   install
+302   Frpc                                          not-installed   install
+303   Plex-Media-Server                             not-installed   install
+304   Emby-Server                                   not-installed   install
+305   OpenMediaVault(OMV-6)                         not-installed   install
 -----------------------------------------------------------------------------------
 [ OPTIONS ] Please Input Software ID:
 ```
@@ -101,7 +115,7 @@ ID    NAME                                          STATE           MANAGE
 
 ## 软件中心开发说明
 
-软件中心的脚本/命令集中存放在 [/usr/share/ophub/armbian-software](../common-files/rootfs/usr/share/ophub/armbian-software) 目录下。其中以数字开头的文件是对应软件的 `一键安装脚本` 文件。[software-command.sh](../common-files/rootfs/usr/share/ophub/armbian-software/software-command.sh) 是使用命令安装/更新/删除操作的`统一指令文件`。[software-list.conf](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) 是软件列表配置文件，说明如下：
+软件中心的脚本/命令集中存放在 [/usr/share/ophub/armbian-software](../common-files/rootfs/usr/share/ophub/armbian-software) 目录下，使用 `armbian-software -u` 命令可以同步下载此目录至本地，更新本地的软件中心列表。其中以数字开头的文件是对应软件的 `一键安装脚本` 文件。[software-command.sh](../common-files/rootfs/usr/share/ophub/armbian-software/software-command.sh) 是使用命令安装/更新/删除操作的`统一指令文件`。[software-list.conf](../common-files/rootfs/usr/share/ophub/armbian-software/software-list.conf) 是软件列表配置文件，说明如下：
 
 ```yaml
 # software-list.conf description

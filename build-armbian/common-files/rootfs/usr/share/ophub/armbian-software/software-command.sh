@@ -8,7 +8,7 @@
 # This file is a part of the Armbian for Amlogic TV Boxes
 # https://github.com/ophub/amlogic-s9xxx-armbian
 #
-# Function: Execute software install/update/remove command
+# Function: Execute software install/update/uninstall command
 # Copyright (C) 2021- https://github.com/unifreq/openwrt_packit
 # Copyright (C) 2021- https://github.com/ophub/amlogic-s9xxx-armbian
 #
@@ -19,30 +19,53 @@
 #
 #============================== Functions list ==============================
 #
-# error_msg         : Output error message
-# check_release     : Check release file
-# software_install  : Install package
-# software_update   : Update package
-# software_remove   : Remove package
-# init_var          : Initialize variables
+# error_msg                 : Output error message
+# check_release             : Check release file
+# software_install          : Install package
+# software_update           : Update package
+# software_remove           : Remove package
+# docker_container_remove   : Delete the docker container
+# docker_image_remove       : Delete the docker image
+# docker_update             : Update docker
+# docker_remove             : Remove docker
 #
-# software_101      : For docker
-# software_102      : For portainer(docker)
-# software_103      : For transmission(docker)
-# software_104      : For qbittorrent(docker)
+# software_101              : For docker
+# software_102              : For portainer:8000/9443(docker)
+# software_103              : For yacht:8001(docker)
+# software_104              : For transmission:9091/51413(docker)
+# software_105              : For qbittorrent:8080/6881(docker)
+# software_106              : For nextcloud:8088(docker)
+# software_107              : For jellyfin:8096/8920/7359/1900(docker)
+# software_108              : For homeassistant:8123(docker)
+# software_109              : For kodbox:8081(docker)
+# software_110              : For sonarr:8989(docker)
 #
-# software_201      : For desktop
-# software_202      : For vlc-media-player(desktop)
-# software_203      : For firefox(desktop)
+# software_201              : For desktop
+# software_202              : For firefox(desktop)
+# software_203              : For vlc-media-player(desktop)
+# software_204              : For mpv-media-player(desktop)
+# software_205              : For gimp(desktop)
 #
-# software_303      : For plex-media-server
+# software_303              : For plex-media-server
+# software_304              : For emby-server
+# software_305              : For openmediavault(OMV-6.x)
+#
+# init_var                  : Initialize variables
 #
 #========================== Set default parameters ==========================
 #
 # Get custom firmware information
+software_path="/usr/share/ophub/armbian-software"
+software_command="${software_path}/software-command.sh"
 ophub_release_file="/etc/ophub-release"
 docker_path="/opt/docker"
 download_path="/opt/downloads"
+movie_path="/opt/movie"
+music_path="/opt/music"
+tv_path="/opt/tv"
+docker_puid="1000"
+docker_pgid="1000"
+docker_tz="Asia/Shanghai"
 #
 # Set font color
 STEPS="[\033[95m STEPS \033[0m]"
@@ -110,9 +133,58 @@ software_remove() {
     echo -e "${SUCCESS} [ ${remove_list} ] packages removed successfully."
 }
 
+# Delete the docker container
+docker_container_remove() {
+    local container_name="${1}"
+    [[ -n "${container_name}" ]] || error_msg "Docker container name is empty!"
+
+    # Query the container ID based on the image name and delete it
+    echo -e "${STEPS} Start removing container: [ ${container_name} ]..."
+    docker stop $(docker ps -aq --filter name=${container_name})
+    docker rm $(docker ps -aq --filter name=${container_name})
+    echo -e "${SUCCESS} ${container_name} removed successfully."
+}
+
+# Delete the docker image
+docker_image_remove() {
+    local image_name="${1}"
+    [[ -n "${image_name}" ]] || error_msg "Docker image name is empty!"
+
+    # Query the image ID based on the image name and delete it
+    echo -e "${STEPS} Start removing image: [ ${image_name} ]..."
+    docker image rm $(docker images -q --filter reference=${image_name})
+    echo -e "${SUCCESS} ${image_name} removed successfully."
+}
+
+# Update docker
+docker_update() {
+    [[ -n "${image_name}" && -n "${container_name}" ]] || error_msg "Docker image or container name is empty!"
+
+    echo -e "${STEPS} Start updating the docker: [ ${container_name} ]..."
+    # Update docker image
+    docker pull "${image_name}"
+    # Delete old container
+    docker_container_remove "${container_name}"
+    # Start a new one
+    sudo ${software_command} -s ${software_id} -m install
+}
+
+# Remove docker
+docker_remove() {
+    [[ -n "${image_name}" && -n "${container_name}" && -n "${install_path}" ]] || error_msg "Docker image, container or path is empty!"
+
+    echo -e "${STEPS} Start removing docker: [ ${container_name} ]..."
+    # Delete old container
+    docker_container_remove "${container_name}"
+    # Delete old image
+    docker_image_remove "${image_name}"
+    # Delete the installation directory
+    [[ -d "${install_path}" ]] && rm -rf ${install_path}
+    exit 0
+}
+
 # For docker
 software_101() {
-    echo -e "${STEPS} Start executing the command..."
     echo -e "${INFO} Software Name: [ docker ]"
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
@@ -135,33 +207,84 @@ software_101() {
 
 # For portainer
 software_102() {
-    echo -e "${STEPS} Start executing the command..."
-    echo -e "${INFO} Software Name: [ portainer ]"
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
 
+    # Set basic information
+    container_name="portainer"
+    image_name="portainer/portainer-ce:latest"
+    install_path="${docker_path}/${container_name}"
+
     case "${software_manage}" in
     install)
-        echo -ne "${OPTIONS} Select Install Portainer-ce?  No=(n) / LAN ip access=(h) / Domain cert access=(s): "
-        read pt
-        case "${pt}" in
-        h | H | http)
-            soft_opt="portainer_lan"
-            ;;
-        s | S | https)
-            soft_opt="portainer_domain"
-            ;;
-        *)
-            echo -e "${INFO} Finish the installation." && exit 0
-            ;;
-        esac
-        armbian-docker ${soft_opt}
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/portainer/portainer-ce
+        docker volume create ${container_name}_data
+        docker run -d --name ${container_name} \
+            -p 8000:8000 \
+            -p 9443:9443 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${install_path}/portainer_data:/data \
+            --restart always \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address: [ https://ip:9443 ]"
+        echo -e "${SUCCESS} The ${container_name} installed successfully."
+        exit 0
         ;;
     update)
-        armbian-docker update
+        docker_update
         ;;
     remove)
-        armbian-docker portainer_remove
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For yacht
+software_103() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    # Set basic information
+    container_name="yacht"
+    image_name="selfhostedpro/yacht:latest"
+    install_path="${docker_path}/${container_name}"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/selfhostedpro/yacht
+        docker volume create ${container_name}
+        docker run -d --name ${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8001:8000 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ${install_path}/config:/config \
+            --restart unless-stopped \
+            ${image_name}
+
+        sudo ufw allow 8001/tcp 2>/dev/null
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address: [ http://ip:8001 ]"
+        echo -e "${NOTE} The ${container_name} account: [ username:admin@yacht.local  /  password:pass ]"
+        echo -e "${NOTE} The ${container_name} website: [ https://yacht.sh ]"
+        echo -e "${NOTE} The ${container_name} template: [ https://raw.githubusercontent.com/SelfhostedPro/selfhosted_templates/yacht/Template/template.json ]"
+        echo -e "${SUCCESS} The ${container_name} installed successfully."
+        exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
         ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
@@ -170,25 +293,23 @@ software_102() {
 }
 
 # For transmission
-software_103() {
-    echo -e "${STEPS} Start executing the command..."
-    echo -e "${INFO} Software Name: [ transmission ]"
+software_104() {
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
 
+    # Set basic information
+    container_name="transmission"
+    image_name="linuxserver/transmission:arm64v8-latest"
+    install_path="${docker_path}/${container_name}"
+
     # Generate random account
     random_account="$(cat /proc/sys/kernel/random/uuid)"
-    # transmission installation path
-    tr_path="${docker_path}/transmission"
     tr_default_user="admin"
     tr_default_pass="${random_account:0:18}"
 
     case "${software_manage}" in
     install)
-        echo -e "${STEPS} Start installing the docker image: [ transmission ]..."
-
-        # Check script permission
-        [[ "$(id -u)" == "0" ]] || error_msg "please run this script as root: [ sudo ${0} -s 103 -m install ]"
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
 
         echo -ne "${OPTIONS} Set login username, the default is [ ${tr_default_user} ]: "
         read tr_user
@@ -200,66 +321,39 @@ software_103() {
         [[ -z "${tr_pass}" ]] && tr_pass="${tr_default_pass}"
         echo -e "${INFO} Login password: [ ${tr_pass} ]"
 
-        [[ -d "${tr_path}" ]] || mkdir -p ${tr_path}
-
         # Instructions: https://github.com/linuxserver/docker-transmission
-        echo -e "${STEPS} Start pulling the docker image: [ linuxserver/transmission:arm64v8-latest ]..."
-        docker run -d --name=transmission \
-            -e PUID=1000 \
-            -e PGID=1000 \
-            -e TZ=Asia/Shanghai \
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
             -e TRANSMISSION_WEB_HOME=/transmission-web-control/ \
             -e USER=${tr_user} \
             -e PASS=${tr_pass} \
             -p 9091:9091 \
             -p 51413:51413 \
             -p 51413:51413/udp \
-            -v ${tr_path}/config:/config \
-            -v ${tr_path}/watch/folder:/watch \
+            -v ${install_path}/config:/config \
+            -v ${install_path}/watch/folder:/watch \
             -v ${download_path}:/downloads \
             --restart unless-stopped \
-            linuxserver/transmission:arm64v8-latest
+            ${image_name}
 
         # Set the transmission-web-control
         echo -e "${STEPS} Start the installation interface: [ transmission-web-control ]..."
         tr_cn_url="https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh"
-        bash <(curl -fsSL ${tr_cn_url}) ${tr_path}
+        bash <(curl -fsSL ${tr_cn_url}) ${install_path}
 
         sync && sleep 3
-        echo -e "${NOTE} The transmission address [ http://ip:9091 ]"
-        echo -e "${NOTE} The transmission account [ username:${tr_user}  /  password:${tr_pass} ]"
-        echo -e "${SUCCESS} Transmission installed successfully."
+        echo -e "${NOTE} The ${container_name} address: [ http://ip:9091 ]"
+        echo -e "${NOTE} The ${container_name} account: [ username:${tr_user}  /  password:${tr_pass} ]"
+        echo -e "${SUCCESS} The ${container_name} installed successfully."
         exit 0
         ;;
     update)
-        # Update transmission docker image
-        echo -e "${STEPS} Start updating the transmission docker image..."
-        docker pull linuxserver/transmission:arm64v8-latest
-
-        # Update transmission-web-control
-        echo -e "${STEPS} Start updating the interface: [ transmission-web-control ]..."
-        tr_cn_url="https://github.com/ronggang/transmission-web-control/raw/master/release/install-tr-control-cn.sh"
-        bash <(curl -fsSL ${tr_cn_url}) ${tr_path}
-
-        # Restart transmission
-        echo -e "${STEPS} Restart the transmission docker container..."
-        docker restart $(docker ps -aq --filter name=transmission)
+        docker_update
         ;;
     remove)
-        # Query the container ID based on the image name and delete it
-        echo -e "${INFO} Start removing transmission container..."
-        docker stop $(docker ps -aq --filter name=transmission)
-        docker rm $(docker ps -aq --filter name=transmission)
-
-        # Query the image ID based on the image name and delete it
-        echo -e "${INFO} Start removing transmission image..."
-        docker image rm $(docker images -q --filter reference=linuxserver/transmission*:*)
-
-        # Delete the transmission installation directory
-        [[ -d "${tr_path}" ]] && rm -rf ${tr_path}
-
-        echo -e "${SUCCESS} transmission removed successfully."
-        exit 0
+        docker_remove
         ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
@@ -268,69 +362,256 @@ software_103() {
 }
 
 # For qbittorrent
-software_104() {
-    echo -e "${STEPS} Start executing the command..."
-    echo -e "${INFO} Software Name: [ qbittorrent ]"
+software_105() {
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
 
-    # qbittorrent installation path
-    qb_path="${docker_path}/qbittorrent"
+    # Set basic information
+    container_name="qbittorrent"
+    image_name="linuxserver/qbittorrent:arm64v8-latest"
+    install_path="${docker_path}/${container_name}"
 
     case "${software_manage}" in
     install)
-        echo -e "${STEPS} Start installing the docker image: [ qbittorrent ]..."
-
-        # Check script permission
-        [[ "$(id -u)" == "0" ]] || error_msg "please run this script as root: [ sudo ${0} -s 104 -m install ]"
-
-        [[ -d "${qb_path}" ]] || mkdir -p ${qb_path}
-
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
         # Instructions: https://hub.docker.com/r/linuxserver/qbittorrent
-        echo -e "${STEPS} Start pulling the docker image: [ linuxserver/qbittorrent:arm64v8-latest ]..."
-        docker run -d --name=qbittorrent \
-            -e PUID=1000 \
-            -e PGID=1000 \
-            -e TZ=Asia/Shanghai \
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
             -e WEBUI_PORT=8080 \
             -p 8080:8080 \
             -p 6881:6881 \
             -p 6881:6881/udp \
-            -v ${qb_path}/appdata/config:/config \
+            -v ${install_path}/appdata/config:/config \
             -v ${download_path}:/downloads \
             --restart unless-stopped \
-            linuxserver/qbittorrent:arm64v8-latest
+            ${image_name}
 
         sync && sleep 3
-        echo -e "${NOTE} The qbittorrent address [ http://ip:8080 ]"
-        echo -e "${NOTE} The qbittorrent account [ username:admin  /  password:adminadmin ]"
-        echo -e "${SUCCESS} qbittorrent installed successfully."
+        echo -e "${NOTE} The ${container_name} address: [ http://ip:8080 ]"
+        echo -e "${NOTE} The ${container_name} account: [ username:admin  /  password:adminadmin ]"
+        echo -e "${SUCCESS} The ${container_name} installed successfully."
         exit 0
         ;;
     update)
-        # Update qbittorrent docker image
-        echo -e "${STEPS} Start updating the qbittorrent docker image..."
-        docker pull linuxserver/qbittorrent:arm64v8-latest
-
-        # Restart qbittorrent
-        echo -e "${STEPS} Restart the qbittorrent docker container..."
-        docker restart $(docker ps -aq --filter name=qbittorrent)
+        docker_update
         ;;
     remove)
-        # Query the container ID based on the image name and delete it
-        echo -e "${INFO} Start removing qbittorrent container..."
-        docker stop $(docker ps -aq --filter name=qbittorrent)
-        docker rm $(docker ps -aq --filter name=qbittorrent)
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
 
-        # Query the image ID based on the image name and delete it
-        echo -e "${INFO} Start removing qbittorrent image..."
-        docker image rm $(docker images -q --filter reference=linuxserver/qbittorrent*:*)
+# For nextcloud
+software_106() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
 
-        # Delete the qbittorrent installation directory
-        [[ -d "${qb_path}" ]] && rm -rf ${qb_path}
+    # Set basic information
+    container_name="nextcloud"
+    image_name="arm64v8/nextcloud:latest"
+    install_path="${docker_path}/${container_name}"
 
-        echo -e "${SUCCESS} qbittorrent removed successfully."
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/arm64v8/nextcloud
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8088:80 \
+            -v ${install_path}/nextcloud:/var/www/html \
+            -v ${install_path}/apps:/var/www/html/custom_apps \
+            -v ${install_path}/config:/var/www/html/config \
+            -v ${install_path}/data:/var/www/html/data \
+            --restart unless-stopped \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address [ http://ip:8088 ]"
+        echo -e "${SUCCESS} ${container_name} installed successfully."
         exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For jellyfin
+software_107() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    # Set basic information
+    container_name="jellyfin"
+    image_name="linuxserver/jellyfin:arm64v8-latest"
+    install_path="${docker_path}/${container_name}"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/linuxserver/jellyfin
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8096:8096 \
+            -p 8920:8920 \
+            -p 7359:7359/udp \
+            -p 1900:1900/udp \
+            -v ${install_path}/library:/config \
+            -v ${install_path}/tvseries:/data/tvshows \
+            -v ${install_path}/movies:/data/movies \
+            --restart unless-stopped \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address [ http://ip:8096 / https://ip:8920 ]"
+        echo -e "${SUCCESS} ${container_name} installed successfully."
+        exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For homeassistant
+software_108() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    # Set basic information
+    container_name="homeassistant"
+    image_name="linuxserver/homeassistant:arm64v8-latest"
+    install_path="${docker_path}/${container_name}"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/linuxserver/homeassistant
+        docker run -d --name=${container_name} \
+            --net=host \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8123:8123 \
+            -v ${install_path}/data:/config \
+            --restart unless-stopped \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} app [ Home Assistant ]"
+        echo -e "${NOTE} The ${container_name} address [ http://ip:8123 ]"
+        echo -e "${SUCCESS} ${container_name} installed successfully."
+        exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For kodbox
+software_109() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    # Set basic information
+    container_name="kodbox"
+    image_name="kodcloud/kodbox:latest"
+    install_path="${docker_path}/${container_name}"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/kodcloud/kodbox
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8081:80 \
+            -v ${install_path}/data:/var/www/html \
+            -v ${install_path}/ssl:/etc/nginx/ssl \
+            --restart unless-stopped \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address [ http://ip:8081 ]"
+        echo -e "${SUCCESS} ${container_name} installed successfully."
+        exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For sonarr
+software_110() {
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    # Set basic information
+    container_name="sonarr"
+    image_name="linuxserver/sonarr:arm64v8-latest"
+    install_path="${docker_path}/${container_name}"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start installing the docker image: [ ${container_name} ]..."
+        # Instructions: https://hub.docker.com/r/linuxserver/sonarr
+        docker run -d --name=${container_name} \
+            -e PUID=${docker_puid} \
+            -e PGID=${docker_pgid} \
+            -e TZ=${docker_tz} \
+            -p 8989:8989 \
+            -v ${install_path}/data:/config \
+            -v ${tv_path}:/tv \
+            -v ${download_path}:/downloads \
+            --restart unless-stopped \
+            ${image_name}
+
+        sync && sleep 3
+        echo -e "${NOTE} The ${container_name} address [ http://ip:8989 ]"
+        echo -e "${SUCCESS} ${container_name} installed successfully."
+        exit 0
+        ;;
+    update)
+        docker_update
+        ;;
+    remove)
+        docker_remove
         ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
@@ -340,7 +621,6 @@ software_104() {
 
 # For desktop
 software_201() {
-    echo -e "${STEPS} Start executing the command..."
     echo -e "${INFO} Software Name: [ desktop ]"
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
@@ -365,6 +645,9 @@ software_201() {
             error_msg "VERSION_CODEID not supported: [ ${VERSION_CODEID} ]"
         fi
         ;;
+    update)
+        software_update
+        ;;
     remove)
         if [[ "${VERSION_CODEID}" == "ubuntu" ]]; then
             # Remove ubuntu-desktop(gdm3) on Ubuntu (jammy/focal)
@@ -384,32 +667,6 @@ software_201() {
             error_msg "VERSION_CODEID not supported: [ ${VERSION_CODEID} ]"
         fi
         ;;
-    update)
-        software_update
-        ;;
-    *)
-        error_msg "Invalid input parameter: [ ${@} ]"
-        ;;
-    esac
-}
-
-# For vlc-media-player
-software_202() {
-    echo -e "${STEPS} Start executing the command..."
-    echo -e "${INFO} Software Name: [ vlc-media-player ]"
-    echo -e "${INFO} Software ID: [ ${software_id} ]"
-    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
-
-    case "${software_manage}" in
-    install)
-        software_install "vlc"
-        ;;
-    remove)
-        software_remove "vlc"
-        ;;
-    update)
-        software_update
-        ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
         ;;
@@ -417,8 +674,7 @@ software_202() {
 }
 
 # For firefox
-software_203() {
-    echo -e "${STEPS} Start executing the command..."
+software_202() {
     echo -e "${INFO} Software Name: [ firefox ]"
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
@@ -428,12 +684,79 @@ software_203() {
         [[ "${VERSION_CODEID}" == "ubuntu" ]] && software_install "firefox"
         [[ "${VERSION_CODEID}" == "debian" ]] && software_install "firefox-esr"
         ;;
+    update)
+        software_update
+        ;;
     remove)
         [[ "${VERSION_CODEID}" == "ubuntu" ]] && software_remove "firefox"
         [[ "${VERSION_CODEID}" == "debian" ]] && software_remove "firefox-esr"
         ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For vlc-media-player
+software_203() {
+    echo -e "${INFO} Software Name: [ vlc-media-player ]"
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    case "${software_manage}" in
+    install)
+        software_install "vlc"
+        ;;
     update)
         software_update
+        ;;
+    remove)
+        software_remove "vlc"
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For mpv-media-player
+software_204() {
+    echo -e "${INFO} Software Name: [ mpv-media-player ]"
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    case "${software_manage}" in
+    install)
+        software_install "mpv"
+        ;;
+    update)
+        software_update
+        ;;
+    remove)
+        software_remove "mpv"
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For gimp
+software_205() {
+    echo -e "${INFO} Software Name: [ gimp ]"
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    case "${software_manage}" in
+    install)
+        sudo add-apt-repository ppa:otto-kesselgulasch/gimp
+        software_install "gimp"
+        ;;
+    update)
+        software_update
+        ;;
+    remove)
+        software_remove "gimp"
         ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
@@ -443,7 +766,6 @@ software_203() {
 
 # For plex-media-server
 software_303() {
-    echo -e "${STEPS} Start executing the command..."
     echo -e "${INFO} Software Name: [ plex-media-server ]"
     echo -e "${INFO} Software ID: [ ${software_id} ]"
     echo -e "${INFO} Software Manage: [ ${software_manage} ]"
@@ -478,24 +800,126 @@ software_303() {
         sudo systemctl start plexmediaserver.service
         sudo systemctl enable plexmediaserver.service
 
-        # Check Plex Media Server Status
-        echo -e "${STEPS} Check Plex Media Server Status..."
-        systemctl status plexmediaserver.service
-
         # Confirm the service is enabled
         echo -e "${STEPS} Confirm the service is enabled..."
         systemctl is-enabled plexmediaserver.service
 
-        # Configure Plex Media Server: http://<plex-media-server-ip>:32400/web
+        # Configure Plex Media Server: http://ip:32400/web
         sync && sleep 3
-        echo -e "${NOTE} Plex Media Server address [ http://ip:32400/web ]"
-        echo -e "${SUCCESS} Plex Media Server installation is successful."
+        echo -e "${NOTE} The Plex Media Server address: [ http://ip:32400/web ]"
+        echo -e "${SUCCESS} The Plex Media Server installation is successful."
+        ;;
+    update)
+        software_update
         ;;
     remove)
         software_remove "plexmediaserver"
         ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For emby-server
+software_304() {
+    echo -e "${INFO} Software Name: [ emby-server ]"
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    case "${software_manage}" in
+    install)
+        # Software version query api
+        software_api="https://api.github.com/repos/MediaBrowser/Emby.Releases/releases"
+        # Check the latest version, E.g: 4.7.5.0
+        software_latest_version="$(curl -s "${software_api}" | grep "tag_name" | awk -F '"' '{print $4}' | grep -E [.]0$ | tr " " "\n" | sort -rV | head -n 1)"
+        # Query download address, E.g: https://github.com/MediaBrowser/Emby.Releases/releases/download/4.7.5.0/emby-server-deb_4.7.5.0_arm64.deb
+        software_url="$(curl -s "${software_api}" | grep -oE "https:.*${software_latest_version}.*_arm64.deb")"
+        [[ -n "${software_url}" ]] || error_msg "The download address is empty!"
+        echo -e "${INFO} Software download from: [ ${software_url} ]"
+
+        # Download software, E.g: /tmp/tmp.xxx/emby-server-deb_4.7.5.0_arm64.deb
+        tmp_download="$(mktemp -d)"
+        software_filename="${software_url##*/}"
+        echo -e "${STEPS} Start downloading Emby Server..."
+        wget -q -P ${tmp_download} ${software_url}
+        [[ "${?}" -eq "0" && -s "${tmp_download}/${software_filename}" ]] || error_msg "Software download failed!"
+        echo -e "${INFO} Software downloaded successfully: $(ls ${tmp_download} -l)"
+
+        # Installing Emby Server
+        echo -e "${STEPS} Start installing Emby Server..."
+        sudo dpkg -i ${tmp_download}/${software_filename}
+
+        # Enable Emby Server to start automatically on system boot
+        echo -e "${STEPS} Start setting up the Emby Server to start automatically at system boot..."
+        sudo systemctl daemon-reload
+        sudo systemctl start emby-server.service
+        sudo systemctl enable emby-server.service
+
+        # Confirm the service is enabled
+        echo -e "${STEPS} Confirm the service is enabled..."
+        systemctl is-enabled emby-server.service
+
+        # Configure Emby Server: http://ip:8096
+        sync && sleep 3
+        echo -e "${NOTE} The Emby Server address: [ http://ip:8096 ]"
+        echo -e "${SUCCESS} The Emby Server installation is successful."
+        ;;
     update)
         software_update
+        ;;
+    remove)
+        software_remove "emby-server"
+        ;;
+    *)
+        error_msg "Invalid input parameter: [ ${@} ]"
+        ;;
+    esac
+}
+
+# For openmediavault(OMV-6.x)
+software_305() {
+    echo -e "${INFO} Software Name: [ OpenMediaVault ]"
+    echo -e "${INFO} Software ID: [ ${software_id} ]"
+    echo -e "${INFO} Software Manage: [ ${software_manage} ]"
+
+    case "${software_manage}" in
+    install)
+        echo -e "${STEPS} Start checking the installation environment..."
+        # Check script permission
+        [[ "$(id -u)" == "0" ]] || error_msg "please run this script as root: [ sudo ${0} -s 104 -m install ]"
+        # Check systemd running status
+        systemd="$(ps --no-headers -o comm 1)"
+        [[ "${systemd}" == "systemd" ]] || error_msg "This system is not running systemd."
+        # Check the system operating environment
+        [[ -z "$(dpkg -l | grep -wE 'gdm3|sddm|lxdm|xdm|lightdm|slim|wdm')" ]] || error_msg "OpenMediaVault does not support running in desktop environment!"
+
+        # Download software, E.g: /tmp/tmp.xxx/install
+        tmp_download="$(mktemp -d)"
+        software_url="https://github.com/OpenMediaVault-Plugin-Developers/installScript/raw/master/install"
+        software_filename="${software_url##*/}"
+        echo -e "${STEPS} Start downloading the OpenMediaVault installation script..."
+        wget -q -P ${tmp_download} ${software_url}
+        [[ "${?}" -eq "0" && -s "${tmp_download}/${software_filename}" ]] || error_msg "Software download failed!"
+        chmod +x ${tmp_download}/${software_filename}
+        echo -e "${INFO} Software downloaded successfully: $(ls ${tmp_download} -l)"
+
+        # Install OpenMediaVault and omv-extras extension: https://github.com/OpenMediaVault-Plugin-Developers/installScript
+        echo -e "${STEPS} Start installing OpenMediaVault and omv-extras extension..."
+        sudo ${tmp_download}/${software_filename} -n
+
+        # Configure OpenMediaVault: http://ip
+        sync && sleep 3
+        echo -e "${NOTE} The OpenMediaVault address: [ http://ip ]"
+        echo -e "${NOTE} The OpenMediaVault account: [ username:admin  /  password:openmediavault ]"
+        echo -e "${NOTE} How to use OpenMediaVault: [ https://forum.openmediavault.org/ ]"
+        echo -e "${SUCCESS} The OpenMediaVault installation is successful."
+        ;;
+    update)
+        software_update
+        ;;
+    remove)
+        software_remove "openmediavault"
         ;;
     *)
         error_msg "Invalid input parameter: [ ${@} ]"
@@ -545,7 +969,6 @@ init_var() {
 }
 
 # Check script permission, supports running on Armbian system.
-echo -e "${STEPS} Welcome to the software service command center: [ ${0} ]"
 [[ "$(id -u)" == "0" ]] || error_msg "Please run this script as root: [ sudo ${0} ]"
 #
 # Initialize variables
